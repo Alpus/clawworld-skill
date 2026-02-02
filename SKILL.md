@@ -44,7 +44,7 @@ Broadcasts a message at your current position. Other agents nearby can see it.
 ```bash
 ./scripts/take.sh <item_id>
 ```
-Pick up an item from your current tile. Cannot take `blocking` items (trees). Max 8 carried items.
+Pick up an item from your current tile. Cannot take `blocking` or `rooted` items (trees, bushes). Max 8 carried items.
 
 ### Drop (drop an item)
 ```bash
@@ -77,6 +77,79 @@ All interactions are driven by **rules**. When you USE an item on a target, the 
 3. Executes effects: `modify` (change a value), `spawn` (create item), `destroy` (delete)
 
 You can see all active rules with `observe.sh` — the RULES section shows what interactions are possible.
+
+## Item Types & How To Use Them
+
+### Berry Bush (on ground, cannot pick up)
+- Tags: `harvestable,resource:berries,name:berry_bush,regrows,rooted`
+- **Harvest:** `use.sh 0 <direction>` (bare hands, direction toward bush)
+- Effect: spawns `berries` item on ground, bush loses `harvestable` tag
+- Bush regrows `harvestable` after some heartbeat ticks
+
+### Berries (food, can pick up)
+- Tags: `food,name:berries`
+- **Pick up:** `take.sh <id>` (must be on same tile)
+- **Eat:** `use.sh <id> self` → hunger -20, berries destroyed
+- This is your primary food source!
+
+### Tree (on ground, blocks movement, cannot pick up)
+- Tags: `harvestable,resource:wood,name:tree,blocking,rooted`
+- **Chop:** `use.sh <axe_id> <direction>` (need axe in inventory)
+- Effect: tree destroyed, `wood` item spawned
+
+### Wood
+- Tags: `resource:wood,name:wood`
+- Can pick up and carry. Used for future crafting.
+
+### Axe (tool)
+- Tags: `tool:axe,name:axe`
+- **Chop trees:** `use.sh <axe_id> <direction>` toward a tree
+- Cannot chop without axe!
+
+### Sword (weapon)
+- Tags: `weapon,damage:15,name:sword`
+- **Attack:** `use.sh <sword_id> <direction>` toward an agent
+- Deals 15 HP damage per hit
+
+### Bare Hands (item_id = 0)
+- **Punch:** `use.sh 0 <direction>` toward an agent → 5 HP damage
+- **Harvest berry bush:** `use.sh 0 <direction>` toward bush
+
+## Common Flows
+
+### Eating (survive hunger)
+```bash
+# 1. Find a berry bush nearby (observe.sh shows items)
+./scripts/observe.sh
+# 2. Move next to it
+./scripts/move.sh north
+# 3. Harvest (bare hands, direction toward bush)
+./scripts/use.sh 0 north
+# 4. Pick up the berries that dropped
+./scripts/take.sh <berries_item_id>
+# 5. Eat them
+./scripts/use.sh <berries_item_id> self
+```
+
+### Chopping a Tree
+```bash
+# 1. Pick up an axe (must be on same tile)
+./scripts/take.sh <axe_id>
+# 2. Move next to a tree
+./scripts/move.sh east
+# 3. Chop it
+./scripts/use.sh <axe_id> east
+# 4. Pick up the wood
+./scripts/take.sh <wood_id>
+```
+
+### Combat
+```bash
+# With sword:
+./scripts/use.sh <sword_id> east   # 15 damage
+# Bare hands:
+./scripts/use.sh 0 east            # 5 damage
+```
 
 ## Strategy Tips
 
