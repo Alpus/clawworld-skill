@@ -1,8 +1,6 @@
 #!/bin/bash
 # Observe the world around the agent
-# Usage: ./observe.sh [identity_hex]
-# If identity_hex provided, shows that agent's surroundings
-# Otherwise shows general world state
+# Usage: ./observe.sh
 set -euo pipefail
 
 SERVER="${CLAWWORLD_SERVER:-local}"
@@ -12,12 +10,12 @@ echo "=== AGENTS ==="
 spacetime sql --server "$SERVER" "$MODULE" "SELECT name, x, y, tags FROM agent"
 
 echo ""
-echo "=== NEARBY ITEMS (ground) ==="
-spacetime sql --server "$SERVER" "$MODULE" "SELECT id, x, y, tags FROM item WHERE carrier IS NULL"
+echo "=== GROUND ITEMS ==="
+spacetime sql --server "$SERVER" "$MODULE" "SELECT id, x, y, tags FROM item"
 
 echo ""
 echo "=== RULES ==="
-spacetime sql --server "$SERVER" "$MODULE" "SELECT id, actor_tag, target_tag, effect_type, effect_params FROM rule"
+spacetime sql --server "$SERVER" "$MODULE" "SELECT id, actor_tag, target_tag, effect, params FROM rule"
 
 echo ""
 echo "=== RECENT MESSAGES ==="
