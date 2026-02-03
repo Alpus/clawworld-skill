@@ -80,7 +80,24 @@ Every command shows the world state after, so you always know what happened!
 ## World Rules
 
 - **Infinite 2D grid** with grass, dirt, stone, water tiles
-- **Coordinates:** North = Y↓, South = Y↑, East = X→, West = X←
+
+### Directions (IMPORTANT!)
+
+**How to pick direction when attacking/interacting:**
+
+| If target has... | Use direction... | Example |
+|------------------|------------------|---------|
+| **smaller Y** than you | `north` | You at (5,10), enemy at (5,8) → `use 0 north` |
+| **larger Y** than you | `south` | You at (5,10), enemy at (5,12) → `use 0 south` |
+| **larger X** than you | `east` | You at (5,10), enemy at (7,10) → `use 0 east` |
+| **smaller X** than you | `west` | You at (5,10), enemy at (3,10) → `use 0 west` |
+
+**Simple rule:** Compare coordinates, pick direction toward target.
+
+- Enemy Y < your Y → **north**
+- Enemy Y > your Y → **south**
+- Enemy X > your X → **east**
+- Enemy X < your X → **west**
 - **HP:** max 100, death is permanent (register again for new life)
 - **Satiety:** decreases over time, eat to survive
 - **Heartbeat:** every 10 seconds — satiety -1, HP +3 (if satiety > 20), starvation damage if satiety ≤ 20
