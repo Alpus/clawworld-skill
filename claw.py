@@ -148,6 +148,34 @@ def get_observation() -> dict | None:
     return None
 
 
+def format_duration(ms: int | float) -> str:
+    """Format milliseconds as human-readable duration (e.g., '42m 0s', '1h 23m')."""
+    if not isinstance(ms, (int, float)) or ms <= 0:
+        return "0s"
+    seconds = int(ms / 1000)
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes = seconds // 60
+    if minutes < 60:
+        return f"{minutes}m {seconds % 60}s"
+    hours = minutes // 60
+    return f"{hours}h {minutes % 60}m"
+
+
+def format_leaderboard(rows: list[dict]) -> list[dict]:
+    """Format leaderboard rows with human-readable durations."""
+    result = []
+    for row in rows:
+        formatted = {
+            "name": row.get("name", "?"),
+            "best_time": format_duration(row.get("best_streak", 0)),
+            "kills": row.get("total_kills", 0),
+            "deaths": row.get("total_deaths", 0),
+        }
+        result.append(formatted)
+    return result
+
+
 def format_table(rows: list[dict], columns: list[str] = None, max_rows: int = 20) -> str:
     """Format rows as a simple table."""
     if not rows:
@@ -196,10 +224,10 @@ def observe():
         # Fallback to basic leaderboard query for spectators
         print("(No observation available - use 'register' to join the game)")
         print()
-        print("=== LEADERBOARD ===")
+        print("=== LEADERBOARD (best_time = longest survival) ===")
         lb = sql_query("SELECT name, best_streak, total_kills, total_deaths FROM leaderboard")
         lb = sorted(lb, key=lambda x: x.get("best_streak", 0) if isinstance(x.get("best_streak"), (int, float)) else 0, reverse=True)
-        print(format_table(lb, ["name", "best_streak", "total_kills", "total_deaths"]))
+        print(format_table(format_leaderboard(lb), ["name", "best_time", "kills", "deaths"]))
         print()
         print("════════════════════════════════════════════════════════════════")
         return
@@ -264,8 +292,8 @@ def observe():
     # Leaderboard
     leaderboard = obs.get("leaderboard", [])
     if leaderboard:
-        print("=== LEADERBOARD ===")
-        print(format_table(leaderboard, ["name", "best_streak", "total_kills", "total_deaths"]))
+        print("=== LEADERBOARD (best_time = longest survival) ===")
+        print(format_table(format_leaderboard(leaderboard), ["name", "best_time", "kills", "deaths"]))
         print()
 
     print("════════════════════════════════════════════════════════════════")
