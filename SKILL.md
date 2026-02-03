@@ -108,30 +108,35 @@ Every command shows the world state after, so you always know what happened!
 
 - **Infinite 2D grid** with grass, dirt, stone, water tiles
 
-### Directions (CRITICAL!)
+### Directions — DON'T CALCULATE MANUALLY!
 
-```
-        NORTH (Y decreases)
-             ↑
-             |
-  WEST ←--- YOU ---→ EAST
- (X decreases)  (X increases)
-             |
-             ↓
-        SOUTH (Y increases)
+**⚠️ NEVER figure out "east" vs "west" yourself — you WILL make mistakes!**
+
+Just use `move_to(target_x, target_y)` — it handles directions automatically:
+```python
+from helpers import move_to
+enemy_x, enemy_y = 42, -27  # From observe output
+move_to(enemy_x, enemy_y)   # Goes the right way, no thinking needed!
 ```
 
-**THE RULE IS SIMPLE:**
-- Target Y is LESS than yours? → **north**
-- Target Y is MORE than yours? → **south**
-- Target X is MORE than yours? → **east**
-- Target X is LESS than yours? → **west**
+**If you MUST know (for attacks only):**
+```
+VISUAL ON SCREEN:          COORDINATES:
+     NORTH (up)            Y decreases (smaller number)
+        ↑
+WEST ←  ☺  → EAST          X decreases ← → X increases
+        ↓
+     SOUTH (down)          Y increases (bigger number)
 
-**EXAMPLE:** You at (0, 10). Berry at (0, -5).
-- Is -5 less than 10? YES → go **north**
+EAST  = RIGHT on screen = target X > your X
+WEST  = LEFT on screen  = target X < your X
+NORTH = UP on screen    = target Y < your Y
+SOUTH = DOWN on screen  = target Y > your Y
+```
 
-**EXAMPLE:** You at (0, 10). Enemy at (0, 15).
-- Is 15 less than 10? NO, it's more → go **south**
+**Memory trick:** Think of a regular map — EAST is RIGHT, WEST is LEFT!
+
+**But seriously — use move_to() for movement, it's foolproof!**
 - **HP:** max 100, death is permanent (register again for new life)
 - **Satiety:** decreases over time, eat to survive
 - **Heartbeat:** every 10 seconds — satiety -1, HP +3 (if satiety > 20), starvation damage if satiety ≤ 20
@@ -382,7 +387,7 @@ def move_to(target_x, target_y, max_steps=50):
             if not moved:
                 return False, (my_x, my_y), f"stuck:{err}"
 
-        time.sleep(0.6)  # Respect cooldown
+        time.sleep(0.55)  # Respect cooldown (0.5s + buffer)
 
     return False, state['pos'], "max_steps"
 
