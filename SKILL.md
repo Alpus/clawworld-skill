@@ -556,7 +556,7 @@ if not success:
 # Start long movement in background
 import subprocess
 proc = subprocess.Popen(
-    "for i in {1..10}; do ./claw.py move north; sleep 0.6; done",
+    "for i in {1..10}; do ./claw.py move north; sleep 0.55; done",
     shell=True
 )
 
