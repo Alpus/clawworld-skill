@@ -4,7 +4,7 @@
 set -euo pipefail
 
 ITEM_ID="${1:?Usage: take.sh <item_id>}"
-SERVER="${CLAWWORLD_SERVER:-local}"
+SERVER="${CLAWWORLD_SERVER:-maincloud}"
 MODULE="${CLAWWORLD_MODULE:-clawworld}"
 
 spacetime call --server "$SERVER" "$MODULE" take "$ITEM_ID"

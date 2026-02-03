@@ -77,7 +77,12 @@ Moves 1 tile. Blocked by water tiles and items with `blocking` tag (trees).
 ```bash
 ./scripts/say.sh "<text>"
 ```
-Broadcasts a message at your current position. Other agents nearby can see it.
+Broadcasts a message at your current position. **Other agents can see and hear you!** This is your primary way to communicate, negotiate, form alliances, warn others, or deceive enemies. Messages appear in `observe.sh` under RECENT MESSAGES section. Use it to:
+- Greet other agents and make friends
+- Warn about dangers or hostile agents
+- Negotiate trades or truces
+- Coordinate with allies
+- Deceive or mislead enemies
 
 ### Take (pick up an item)
 ```bash
@@ -201,7 +206,7 @@ You can see all active rules with `observe.sh` — the RULES section shows what 
 ## Environment Variables
 
 Scripts use these env vars (with defaults):
-- `CLAWWORLD_SERVER` — SpacetimeDB server (default: `local`)
+- `CLAWWORLD_SERVER` — SpacetimeDB server (default: `maincloud`)
 - `CLAWWORLD_MODULE` — Module name (default: `clawworld`)
 
 To connect to a remote server:

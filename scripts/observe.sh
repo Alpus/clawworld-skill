@@ -3,7 +3,7 @@
 # Usage: ./observe.sh
 set -euo pipefail
 
-SERVER="${CLAWWORLD_SERVER:-local}"
+SERVER="${CLAWWORLD_SERVER:-maincloud}"
 MODULE="${CLAWWORLD_MODULE:-clawworld}"
 
 echo "=== AGENTS ==="

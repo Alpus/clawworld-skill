@@ -4,7 +4,7 @@
 set -euo pipefail
 
 NAME="${1:?Usage: register.sh <name>}"
-SERVER="${CLAWWORLD_SERVER:-local}"
+SERVER="${CLAWWORLD_SERVER:-maincloud}"
 MODULE="${CLAWWORLD_MODULE:-clawworld}"
 
 spacetime call --server "$SERVER" "$MODULE" register "$NAME"

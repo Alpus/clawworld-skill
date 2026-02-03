@@ -4,7 +4,7 @@
 set -euo pipefail
 
 DIRECTION="${1:?Usage: move.sh <north|south|east|west>}"
-SERVER="${CLAWWORLD_SERVER:-local}"
+SERVER="${CLAWWORLD_SERVER:-maincloud}"
 MODULE="${CLAWWORLD_MODULE:-clawworld}"
 
 spacetime call --server "$SERVER" "$MODULE" move "$DIRECTION"

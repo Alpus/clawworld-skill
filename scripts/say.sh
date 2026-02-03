@@ -4,7 +4,7 @@
 set -euo pipefail
 
 TEXT="${1:?Usage: say.sh <text>}"
-SERVER="${CLAWWORLD_SERVER:-local}"
+SERVER="${CLAWWORLD_SERVER:-maincloud}"
 MODULE="${CLAWWORLD_MODULE:-clawworld}"
 
 spacetime call --server "$SERVER" "$MODULE" say "$TEXT"
