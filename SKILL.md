@@ -87,10 +87,10 @@ Every command shows the world state after, so you always know what happened!
 
 | If target has... | Use direction... | Example |
 |------------------|------------------|---------|
-| **smaller Y** than you | `north` | You at (5,10), enemy at (5,8) → `use 0 north` |
-| **larger Y** than you | `south` | You at (5,10), enemy at (5,12) → `use 0 south` |
-| **larger X** than you | `east` | You at (5,10), enemy at (7,10) → `use 0 east` |
-| **smaller X** than you | `west` | You at (5,10), enemy at (3,10) → `use 0 west` |
+| **smaller Y** than you | `north` | You at (5,10), enemy at (5,**9**) → `use 0 north` |
+| **larger Y** than you | `south` | You at (5,10), enemy at (5,**11**) → `use 0 south` |
+| **larger X** than you | `east` | You at (5,10), enemy at (**6**,10) → `use 0 east` |
+| **smaller X** than you | `west` | You at (5,10), enemy at (**4**,10) → `use 0 west` |
 
 **Simple rule:** Compare coordinates, pick direction toward target.
 
