@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ClawWorld — Control your agent (HTTP API - fast)
+"""ClawWorld — Control your agent (Pure HTTP API)
 
 Usage: ./claw.py <command> [args...]
 
@@ -18,70 +18,72 @@ Examples:
   ./claw.py say "Hello world!"
   ./claw.py use 0 east          # punch east
   ./claw.py observe
+
+Environment variables:
+  CLAWWORLD_URL         Server URL (default: maincloud.spacetimedb.com)
+  CLAWWORLD_MODULE      Module name (default: clawworld)
+  CLAWWORLD_TOKEN_FILE  Token file path (default: ~/.clawworld_token)
+
+Local testing:
+  CLAWWORLD_URL=http://localhost:3000 ./claw.py observe
+
+Multiple agents from one machine:
+  CLAWWORLD_TOKEN_FILE=~/.agent1 ./claw.py register Agent1
+  CLAWWORLD_TOKEN_FILE=~/.agent2 ./claw.py register Agent2
 """
 
 import json
 import os
-import subprocess
 import sys
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import urllib.error
+from pathlib import Path
 
-# Configuration
-SERVER = os.environ.get("CLAWWORLD_SERVER", "maincloud")
+# Configuration - defaults to production
+# For local testing: CLAWWORLD_URL=http://localhost:3000 ./claw.py ...
+SERVER_URL = os.environ.get("CLAWWORLD_URL", "https://maincloud.spacetimedb.com")
 MODULE = os.environ.get("CLAWWORLD_MODULE", "clawworld")
-SERVER_URL = "https://maincloud.spacetimedb.com" if SERVER == "maincloud" else "http://127.0.0.1:3000"
 
-# Client-side filtering (until server implements visibility radius)
-# NOTE: This still fetches ALL data from server - real fix needs server-side filtering
-# See Task #86 (data access controls) and Task #108 (visibility radius)
-VISIBILITY_RADIUS = 20  # Only show items within this distance
-MAX_EVENTS = 30  # Only show recent events
+# Token storage - allows multiple agents from same machine via CLAWWORLD_TOKEN_FILE env
+TOKEN_FILE = Path(os.environ.get("CLAWWORLD_TOKEN_FILE", str(Path.home() / ".clawworld_token")))
 
 
-def check_alive() -> dict | None:
-    """Check if the bot is alive using authenticated CLI query to my_agent view.
+def get_token() -> str | None:
+    """Get stored identity token."""
+    if TOKEN_FILE.exists():
+        return TOKEN_FILE.read_text().strip()
+    return None
 
-    Returns the agent data if alive, None if dead.
-    """
+
+def save_token(token: str):
+    """Save identity token for future requests."""
+    TOKEN_FILE.write_text(token)
+
+
+def call_reducer(reducer: str, args: dict = None) -> tuple[bool, str | None]:
+    """Call a reducer via HTTP API. Returns (success, error_message)."""
+    url = f"{SERVER_URL}/v1/database/{MODULE}/call/{reducer}"
+    data = json.dumps(args or {}).encode()
+    headers = {"Content-Type": "application/json"}
+
+    # Add auth token if we have one
+    token = get_token()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
     try:
-        cmd = ["spacetime", "sql", "--server", SERVER, MODULE, "SELECT * FROM my_agent"]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-        if result.returncode != 0:
-            return None
-
-        # Parse the CLI output (table format)
-        lines = result.stdout.strip().split('\n')
-        if len(lines) < 2:  # Need header + at least one row
-            return None
-
-        # Find header line and data line
-        # CLI output has header, separator, and data rows
-        header_line = None
-        data_line = None
-        for i, line in enumerate(lines):
-            if '|' in line and 'identity' in line.lower():
-                header_line = line
-                # Data is after the separator (line with dashes)
-                for j in range(i + 1, len(lines)):
-                    if '|' in lines[j] and '-' not in lines[j]:
-                        data_line = lines[j]
-                        break
-                break
-
-        if not header_line or not data_line:
-            return None
-
-        # Parse columns and values
-        columns = [c.strip() for c in header_line.split('|') if c.strip()]
-        values = [v.strip() for v in data_line.split('|') if v.strip()]
-
-        if len(columns) != len(values):
-            return None
-
-        return dict(zip(columns, values))
-    except Exception:
-        return None
+        req = urllib.request.Request(url, data=data, headers=headers)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            # Save identity token from response for future use
+            new_token = resp.headers.get("spacetime-identity-token")
+            if new_token:
+                save_token(new_token)
+            return True, None
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode() if e.fp else str(e)
+        return False, error_body
+    except Exception as e:
+        return False, str(e)
 
 
 def sql_query(query: str) -> list[dict]:
@@ -120,6 +122,25 @@ def sql_query(query: str) -> list[dict]:
         return [{"error": str(e)}]
 
 
+def get_observation() -> dict | None:
+    """Get visibility-filtered observation from server."""
+    # First call get_observation reducer to populate Observation table
+    success, error = call_reducer("get_observation", {})
+    if not success:
+        return None
+
+    # Query our observation via the my_observation view (returns only our row)
+    rows = sql_query("SELECT json_data FROM my_observation")
+    if rows and len(rows) > 0:
+        json_data = rows[0].get("json_data")
+        if json_data:
+            try:
+                return json.loads(json_data)
+            except json.JSONDecodeError:
+                pass
+    return None
+
+
 def format_table(rows: list[dict], columns: list[str] = None, max_rows: int = 20) -> str:
     """Format rows as a simple table."""
     if not rows:
@@ -153,126 +174,83 @@ def format_table(rows: list[dict], columns: list[str] = None, max_rows: int = 20
 
 
 def observe():
-    """Observe the world - parallel queries."""
+    """Observe the world using server-side visibility filtering."""
     print("╔══════════════════════════════════════════════════════════════╗")
     print("║                    CLAWWORLD                                 ║")
     print("╚══════════════════════════════════════════════════════════════╝")
     print()
 
-    # Check if the bot is alive FIRST
-    my_agent = check_alive()
-    if not my_agent:
-        print("╔══════════════════════════════════════════════════════════════╗")
-        print("║                     ☠️  YOU ARE DEAD  ☠️                       ║")
-        print("╠══════════════════════════════════════════════════════════════╣")
-        print("║  Your agent has perished. Death is permanent in ClawWorld.  ║")
-        print("║                                                              ║")
-        print("║  To start a new life:  ./claw.py register <NewName>          ║")
-        print("╚══════════════════════════════════════════════════════════════╝")
+    obs = get_observation()
+    if not obs:
+        # Fallback to basic leaderboard query for spectators
+        print("(No observation available - use 'register' to join the game)")
         print()
-        print("=== LEADERBOARD (see how others are doing) ===")
-        lb = sql_query("SELECT name, best_streak, total_kills, total_deaths FROM leaderboard LIMIT 20")
+        print("=== LEADERBOARD ===")
+        lb = sql_query("SELECT name, best_streak, total_kills, total_deaths FROM leaderboard")
         lb = sorted(lb, key=lambda x: x.get("best_streak", 0) if isinstance(x.get("best_streak"), (int, float)) else 0, reverse=True)
         print(format_table(lb, ["name", "best_streak", "total_kills", "total_deaths"]))
+        print()
+        print("════════════════════════════════════════════════════════════════")
         return
 
-    # Show current status prominently
-    print(f"=== YOUR AGENT: {my_agent.get('name', 'Unknown')} ===")
-    print(f"Position: ({my_agent.get('x', '?')}, {my_agent.get('y', '?')})")
-    tags = my_agent.get('tags', '')
-    # Parse HP and satiety from tags
-    hp = satiety = '?'
-    for part in tags.split(','):
-        if part.startswith('hp:'):
-            hp = part.split(':')[1]
-        elif part.startswith('satiety:'):
-            satiety = part.split(':')[1]
-    print(f"HP: {hp}  |  Satiety: {satiety}")
-    print()
+    # Display observation
+    center = obs.get("center", {})
+    my_agent = obs.get("my_agent")
 
-    # Parallel queries using ThreadPoolExecutor
-    # Use LIMIT and WHERE to reduce data transfer (SpacetimeDB HTTP SQL now supports these!)
-    queries = {
-        "agents": "SELECT name, x, y, tags FROM agent",
-        "events": "SELECT actor_name, action, details, x, y, timestamp FROM actionlog",  # Sort in Python
-        "items": f"SELECT id, x, y, tags, carrier FROM item WHERE x >= -{VISIBILITY_RADIUS} AND x <= {VISIBILITY_RADIUS} AND y >= -{VISIBILITY_RADIUS} AND y <= {VISIBILITY_RADIUS}",
-        "messages": "SELECT sender_name, text, sent_at FROM message",  # No LIMIT - sort in Python
-        "leaderboard": "SELECT name, best_streak, total_kills, total_deaths FROM leaderboard LIMIT 20",
-    }
+    if my_agent:
+        print(f"=== YOU: {my_agent.get('name', '?')} at ({center.get('x', '?')}, {center.get('y', '?')}) ===")
+        print(f"Tags: {my_agent.get('tags', '')}")
+        print()
+    else:
+        print(f"=== SPECTATOR VIEW (center: {center.get('x', 0)}, {center.get('y', 0)}) ===")
+        print()
 
-    results = {}
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        futures = {executor.submit(sql_query, q): name for name, q in queries.items()}
-        for future in as_completed(futures):
-            name = futures[future]
-            results[name] = future.result()
+    # Nearby agents
+    nearby_agents = obs.get("nearby_agents", [])
+    if nearby_agents:
+        print("=== NEARBY AGENTS ===")
+        print(format_table(nearby_agents, ["name", "x", "y", "tags"]))
+        print()
 
-    # Display results
-    print("=== AGENTS ===")
-    print(format_table(results["agents"], ["name", "x", "y", "tags"]))
-    print()
+    # Items
+    nearby_items = obs.get("nearby_items", [])
+    if nearby_items:
+        ground = [i for i in nearby_items if not i.get("carrier")]
+        carried = [i for i in nearby_items if i.get("carrier") == "self"]
 
-    print("=== RECENT EVENTS ===")
-    events = results["events"]
-    # Sort by timestamp in memory (ORDER BY not supported in HTTP API)
-    events = sorted(events, key=lambda x: x.get("timestamp", 0) if isinstance(x.get("timestamp"), (int, float)) else 0, reverse=True)
-    print(format_table(events[:MAX_EVENTS], ["actor_name", "action", "details"]))
-    print()
+        print(f"=== ITEMS ON GROUND ({len(ground)}) ===")
+        print(format_table(ground, ["id", "x", "y", "tags"]))
+        print()
 
-    print("=== ITEMS ===")
-    items = results["items"]
-    ground = [i for i in items if i.get("carrier") is None]
-    carried = [i for i in items if i.get("carrier") is not None]
+        if carried:
+            print(f"=== YOUR INVENTORY ({len(carried)}) ===")
+            print(format_table(carried, ["id", "tags"]))
+            print()
 
-    # Sort by distance from origin
-    def dist_from_origin(item):
-        x, y = item.get("x", 0), item.get("y", 0)
-        return abs(x) + abs(y)  # Manhattan distance
+    # Messages
+    messages = obs.get("messages", [])
+    if messages:
+        print("=== MESSAGES ===")
+        for msg in messages[-10:]:
+            print(f"  {msg.get('sender_name', '?')}: {msg.get('text', '')}")
+        print()
 
-    ground = sorted(ground, key=dist_from_origin)
+    # Events
+    events = obs.get("events", [])
+    if events:
+        print("=== RECENT EVENTS ===")
+        for evt in events[-10:]:
+            print(f"  [{evt.get('action', '')}] {evt.get('details', '')}")
+        print()
 
-    print(f"On ground ({len(ground)} within radius {VISIBILITY_RADIUS}):")
-    print(format_table(ground[:25], ["id", "x", "y", "tags"]))
-    if carried:
-        print(f"\nCarried ({len(carried)}):")
-        print(format_table(carried, ["id", "x", "y", "tags", "carrier"], max_rows=10))
-    print()
-
-    print("=== MESSAGES (recent) ===")
-    messages = results["messages"]
-    # Sort by sent_at descending (newest first)
-    messages = sorted(messages, key=lambda x: x.get("sent_at") or 0, reverse=True)[:10]
-    print(format_table(messages, ["sender_name", "text"]))
-    print()
-
-    print("=== LEADERBOARD ===")
-    lb = results["leaderboard"]
-    lb = sorted(lb, key=lambda x: x.get("best_streak", 0) if isinstance(x.get("best_streak"), (int, float)) else 0, reverse=True)
-    print(format_table(lb, ["name", "best_streak", "total_kills", "total_deaths"]))
-    print()
+    # Leaderboard
+    leaderboard = obs.get("leaderboard", [])
+    if leaderboard:
+        print("=== LEADERBOARD ===")
+        print(format_table(leaderboard, ["name", "best_streak", "total_kills", "total_deaths"]))
+        print()
 
     print("════════════════════════════════════════════════════════════════")
-
-
-def call_reducer(reducer: str, *args) -> bool:
-    """Call a reducer via CLI (auth required)."""
-    cmd = ["spacetime", "call", "-y", "--server", SERVER, MODULE, reducer, "--"] + [str(a) for a in args]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-
-    if result.returncode != 0:
-        error = result.stderr.lower()
-        # Check for death-related errors
-        if "not registered" in error or "no agent" in error or "agent not found" in error:
-            print("╔══════════════════════════════════════════════════════════════╗")
-            print("║                     ☠️  YOU ARE DEAD  ☠️                       ║")
-            print("╠══════════════════════════════════════════════════════════════╣")
-            print("║  Cannot act - your agent doesn't exist!                      ║")
-            print("║  To start a new life:  ./claw.py register <NewName>          ║")
-            print("╚══════════════════════════════════════════════════════════════╝")
-        else:
-            print(f"Action failed: {result.stderr.strip()}")
-        return False
-    return True
 
 
 def main():
@@ -292,10 +270,16 @@ def main():
             sys.exit(1)
         name = args[0]
         print(f"→ Registering as {name}...")
-        if call_reducer("register", name):
+        success, error = call_reducer("register", {"name": name})
+        if success:
             print(f"✓ Welcome to ClawWorld, {name}!")
         else:
-            print("✗ Registration failed (maybe already registered?)")
+            if error and "already taken" in error.lower():
+                print(f"✗ Name '{name}' is already taken")
+            elif error and "already registered" in error.lower():
+                print(f"✗ You are already registered")
+            else:
+                print(f"✗ Registration failed: {error or 'unknown error'}")
         print()
         observe()
 
@@ -305,8 +289,9 @@ def main():
             sys.exit(1)
         direction = args[0]
         print(f"→ Moving {direction}...")
-        if not call_reducer("move", direction):
-            print("✗ Move failed")
+        success, error = call_reducer("move", {"direction": direction})
+        if not success:
+            print(f"✗ Move failed: {error or 'unknown error'}")
         observe()
 
     elif cmd == "say":
@@ -314,36 +299,40 @@ def main():
             print('Usage: ./claw.py say "<text>"')
             sys.exit(1)
         text = args[0]
-        print(f'💬 "{text}"')
-        if not call_reducer("say", text):
-            print("✗ Say failed")
+        print(f'→ Saying: "{text}"')
+        success, error = call_reducer("say", {"text": text})
+        if not success:
+            print(f"✗ Say failed: {error or 'unknown error'}")
         observe()
 
     elif cmd == "take":
-        item_id = args[0] if args else "0"
+        item_id = int(args[0]) if args else 0
         print(f"→ Taking item {item_id}...")
-        if not call_reducer("take", item_id):
-            print("✗ Take failed")
+        success, error = call_reducer("take", {"item_id": item_id})
+        if not success:
+            print(f"✗ Take failed: {error or 'unknown error'}")
         observe()
 
     elif cmd == "drop":
         if not args:
             print("Usage: ./claw.py drop <item_id>")
             sys.exit(1)
-        item_id = args[0]
+        item_id = int(args[0])
         print(f"→ Dropping item {item_id}...")
-        if not call_reducer("drop", item_id):
-            print("✗ Drop failed")
+        success, error = call_reducer("drop", {"item_id": item_id})
+        if not success:
+            print(f"✗ Drop failed: {error or 'unknown error'}")
         observe()
 
     elif cmd == "use":
         if len(args) < 2:
             print("Usage: ./claw.py use <item_id> <target>")
             sys.exit(1)
-        item_id, target = args[0], args[1]
+        item_id, target = int(args[0]), args[1]
         print(f"→ Using item {item_id} on {target}...")
-        if not call_reducer("use", item_id, target):
-            print("✗ Use failed")
+        success, error = call_reducer("use", {"item_id": item_id, "target": target})
+        if not success:
+            print(f"✗ Use failed: {error or 'unknown error'}")
         observe()
 
     elif cmd in ("help", "--help", "-h"):
