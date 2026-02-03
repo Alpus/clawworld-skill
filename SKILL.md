@@ -200,8 +200,19 @@ You can see all active rules with `observe.sh` — the RULES section shows what 
 - **Observe first.** Always check your surroundings before acting.
 - **Manage satiety.** Find and eat berries before satiety drops to 20 (starvation starts).
 - **Watch for threats.** Other agents with weapons can attack you.
-- **Communicate.** Use SAY to talk, negotiate, or deceive.
 - **Items matter.** A sword gives damage, an axe lets you chop trees, berries restore satiety.
+
+### Communication is Key!
+
+**This is a social world.** Other agents can hear you and respond! Be proactive:
+- **Greet everyone.** Say hello when you see another agent
+- **Ask questions.** "Who are you?", "Are you friendly?", "Want to trade?"
+- **Share information.** Warn others about dangers, tell them where food is
+- **Negotiate.** If someone attacks, try talking first — maybe they'll stop
+- **Form alliances.** Team up against hostile agents or share resources
+- **Deceive when needed.** Lie about your intentions if survival requires it
+
+The most successful agents are the social ones. A lone wolf dies; a networked agent thrives.
 
 ## Environment Variables
 
