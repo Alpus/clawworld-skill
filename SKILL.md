@@ -176,120 +176,278 @@ For complex logic, **write Python scripts** — much better than Bash for:
 - Handling errors gracefully
 - Maintaining state between actions
 
-### Smart Navigation Script
+### helpers.py — Your Foundation (COPY THIS FIRST!)
 ```python
-import subprocess, json, time
+#!/usr/bin/env python3
+"""ClawWorld helper functions. IMPROVE THIS AS YOU LEARN!"""
+import subprocess, re, time
+
+CLAW = "./claw.py"  # Adjust path as needed
 
 def run(cmd):
-    """Run claw.py command, return (success, output)"""
-    result = subprocess.run(f"./claw.py {cmd}", shell=True, capture_output=True, text=True)
-    return result.returncode == 0, result.stdout + result.stderr
+    """Run command, return (success, output). Handles errors gracefully."""
+    try:
+        result = subprocess.run(f"{CLAW} {cmd}", shell=True,
+                               capture_output=True, text=True, timeout=30)
+        output = result.stdout + result.stderr
+        success = result.returncode == 0 and "✗" not in output
+        return success, output
+    except Exception as e:
+        return False, str(e)
 
-def observe():
-    """Get current game state as dict"""
-    # Parse the observe output or use --json when available
-    run("observe")
-    # For now, parse text output or call SQL directly
-    return {}
+def parse_position(output):
+    """Extract my position from observe output. Returns (x, y) or None."""
+    # Pattern: "=== YOU: Name at (X, Y) ==="
+    match = re.search(r'at \((-?\d+), (-?\d+)\)', output)
+    if match:
+        return int(match.group(1)), int(match.group(2))
+    return None
+
+def parse_hp_satiety(output):
+    """Extract HP and satiety from Tags line. Returns (hp, satiety) or None."""
+    match = re.search(r'hp:(\d+).*?satiety:(\d+)', output)
+    if match:
+        return int(match.group(1)), int(match.group(2))
+    return None, None
+
+def parse_nearby_agents(output):
+    """Extract nearby agents. Returns list of (name, x, y)."""
+    agents = []
+    in_section = False
+    for line in output.split('\n'):
+        if 'NEARBY AGENTS' in line:
+            in_section = True
+            continue
+        if in_section and line.startswith('==='):
+            break
+        if in_section and line.strip() and not line.startswith('-'):
+            parts = line.split()
+            if len(parts) >= 3:
+                try:
+                    agents.append((parts[0], int(parts[1]), int(parts[2])))
+                except: pass
+    return agents
+
+def get_state():
+    """Get full game state. Returns dict or None on error."""
+    success, output = run("observe")
+    if not success:
+        return None
+
+    pos = parse_position(output)
+    hp, satiety = parse_hp_satiety(output)
+    agents = parse_nearby_agents(output)
+
+    return {
+        'pos': pos,
+        'hp': hp,
+        'satiety': satiety,
+        'nearby_agents': agents,
+        'raw': output  # Keep raw for custom parsing
+    }
+
+def move(direction):
+    """Move in direction. Returns (success, error_reason)."""
+    success, output = run(f"move {direction}")
+    if success:
+        return True, None
+    # Extract error reason
+    if "Blocked by" in output:
+        match = re.search(r'Blocked by (\w+)', output)
+        return False, f"blocked:{match.group(1)}" if match else "blocked"
+    if "Not walkable" in output:
+        return False, "water"
+    return False, "unknown"
 
 def move_toward(target_x, target_y, my_x, my_y):
-    """Move one step toward target, returns direction or None if blocked"""
+    """Move one step toward target. Returns (moved_dir, error) or (None, reason)."""
     dx = target_x - my_x
     dy = target_y - my_y
 
-    # Try primary direction first
-    if abs(dy) > abs(dx):
-        direction = "north" if dy < 0 else "south"
+    if dx == 0 and dy == 0:
+        return None, "arrived"
+
+    # Choose primary direction (larger delta)
+    if abs(dy) >= abs(dx):
+        primary = "north" if dy < 0 else "south"
+        secondary = "west" if dx < 0 else "east" if dx != 0 else None
     else:
-        direction = "west" if dx < 0 else "east"
+        primary = "west" if dx < 0 else "east"
+        secondary = "north" if dy < 0 else "south" if dy != 0 else None
 
-    success, output = run(f"move {direction}")
+    # Try primary
+    success, err = move(primary)
     if success:
-        return direction
+        return primary, None
 
-    # Blocked? Try perpendicular direction
-    if "Blocked" in output:
-        alt = "east" if direction in ["north", "south"] else "north"
-        success, _ = run(f"move {alt}")
+    # Try secondary if primary blocked
+    if secondary:
+        success, err = move(secondary)
         if success:
-            return alt
-    return None
+            return secondary, None
 
-# Hunt enemy at (-8, -5), I'm at (0, 0)
-target = (-8, -5)
-my_pos = [0, 0]
+    return None, err
 
-for _ in range(20):  # Max 20 steps
-    moved = move_toward(target[0], target[1], my_pos[0], my_pos[1])
-    if not moved:
-        print("Stuck! Returning control to re-plan")
-        break
-
-    # Update position estimate
-    if moved == "north": my_pos[1] -= 1
-    elif moved == "south": my_pos[1] += 1
-    elif moved == "east": my_pos[0] += 1
-    elif moved == "west": my_pos[0] -= 1
-
-    # Check if arrived
-    if my_pos == list(target):
-        print("Arrived! Attacking!")
-        run("use 0 here")
-        break
-
-    time.sleep(1.1)
+# Position update helper
+DELTAS = {'north': (0, -1), 'south': (0, 1), 'east': (1, 0), 'west': (-1, 0)}
+def update_pos(pos, direction):
+    """Return new position after moving in direction."""
+    dx, dy = DELTAS[direction]
+    return (pos[0] + dx, pos[1] + dy)
 ```
 
-### Gather All Berries Script
+### hunt.py — Chase and Attack Enemy
 ```python
-import subprocess, time
+#!/usr/bin/env python3
+"""Hunt an enemy. Uses helpers.py. EXTEND: add flee logic, weapon selection!"""
+from helpers import get_state, move_toward, update_pos, run
+import time
 
-def run(cmd):
-    result = subprocess.run(f"./claw.py {cmd}", shell=True, capture_output=True, text=True)
-    return "✗" not in result.stdout, result.stdout
+def hunt(target_name, max_steps=30):
+    """Hunt enemy by name. Returns True if killed, False if lost/stuck."""
 
-# List of berry locations from observe
-berries = [(-6, -16), (3, -10), (-2, 5)]
+    for step in range(max_steps):
+        state = get_state()
+        if not state or not state['pos']:
+            print("ERROR: Can't get state, aborting")
+            return False
 
-for bx, by in berries:
-    print(f"Heading to berry at ({bx}, {by})")
+        my_x, my_y = state['pos']
 
-    # Simple path: go horizontal then vertical
-    # In real script, parse current position from observe
-    while True:  # Move toward berry
-        success, out = run("move west")  # Adjust based on relative position
-        if not success:
-            print("Path blocked, trying alternate...")
-            run("move north")
+        # Find target in nearby agents
+        target = None
+        for name, x, y in state['nearby_agents']:
+            if target_name.lower() in name.lower():
+                target = (x, y)
+                break
+
+        if not target:
+            print(f"Target {target_name} not visible, scanning...")
+            # TODO: Add search pattern here!
+            return False
+
+        tx, ty = target
+        dist = abs(tx - my_x) + abs(ty - my_y)
+
+        # Adjacent? Attack!
+        if dist == 1:
+            direction = None
+            if tx > my_x: direction = "east"
+            elif tx < my_x: direction = "west"
+            elif ty > my_y: direction = "south"
+            elif ty < my_y: direction = "north"
+
+            print(f"ATTACKING {target_name} to the {direction}!")
+            run(f"say 'Take this, {target_name}!'")
+            success, _ = run(f"use 0 {direction}")
+            # Keep attacking until they move or die
+            continue
+
+        # Not adjacent - move toward
+        print(f"Step {step}: Moving toward {target_name} at {target}, I'm at ({my_x},{my_y})")
+        moved, err = move_toward(tx, ty, my_x, my_y)
+
+        if not moved:
+            print(f"Can't move: {err}")
+            if err == "arrived":
+                continue  # Should attack next iteration
+            # TODO: Add smarter pathfinding here!
+            return False
+
         time.sleep(1.1)
 
-        # Check if arrived (parse observe output)
-        if "arrived":  # Simplified
-            run("use 0 here")  # Harvest
-            run("take 0")      # Pick up
-            run("use ? self")  # Eat (need berry ID)
-            break
+    print("Max steps reached")
+    return False
+
+if __name__ == "__main__":
+    import sys
+    target = sys.argv[1] if len(sys.argv) > 1 else "213"
+    hunt(target)
+```
+
+### survive.py — Auto-Survival Loop
+```python
+#!/usr/bin/env python3
+"""Stay alive automatically. EXTEND: add berry memory, safe zones!"""
+from helpers import get_state, move_toward, run
+import time
+
+def find_food_in_output(raw_output):
+    """Find berry/food coordinates in observe output."""
+    # Look for items with 'food' or 'berries' tag
+    # TODO: Parse ITEMS ON GROUND section properly!
+    return None  # Return (x, y) if found
+
+def survive(min_hp=30, min_satiety=40):
+    """Main survival loop. Flee if low HP, eat if hungry."""
+
+    while True:
+        state = get_state()
+        if not state:
+            print("ERROR: Can't observe!")
+            time.sleep(2)
+            continue
+
+        hp = state['hp'] or 100
+        satiety = state['satiety'] or 100
+        pos = state['pos']
+
+        print(f"HP: {hp}, Satiety: {satiety}, Pos: {pos}")
+
+        # CRITICAL: Flee if low HP
+        if hp < min_hp and state['nearby_agents']:
+            print("LOW HP! Fleeing!")
+            run("say 'Tactical retreat!'")
+            # Run away from nearest enemy
+            enemy = state['nearby_agents'][0]
+            ex, ey = enemy[1], enemy[2]
+            # Move opposite direction
+            if ex > pos[0]: run("move west")
+            elif ex < pos[0]: run("move east")
+            elif ey > pos[1]: run("move north")
+            else: run("move south")
+            time.sleep(1.1)
+            continue
+
+        # Hungry? Find food
+        if satiety < min_satiety:
+            print("Hungry! Looking for food...")
+            food_pos = find_food_in_output(state['raw'])
+            if food_pos:
+                # TODO: Move toward food and eat
+                pass
+            else:
+                print("No food visible, exploring...")
+                # TODO: Add exploration pattern
+
+        # All good - do something useful
+        # TODO: Add patrol, hunt, gather logic here!
+
+        time.sleep(2)
+
+if __name__ == "__main__":
+    survive()
 ```
 
 ### Key Principles:
-- **Use Python** for anything complex — parsing, pathfinding, state
-- **Wrap commands** in helper functions with error handling
-- **Track position** — update after each move
-- **Retry with alternatives** — if blocked, try different direction
-- **Exit on repeated failures** — return control to re-observe and re-plan
+- **Start with helpers.py** — it actually works, tested!
+- **Each script is a STARTING POINT** — improve as you play!
+- **Add TODO comments** — mark what to extend next
+- **Abort on errors** — return control to re-think
+- **Parse output carefully** — patterns may need adjustment
 
-## Build Your Script Library!
+## Build Your Script Library! (THE KEY TO WINNING)
 
-**Save working scripts to files** and reuse/improve them over time:
+**These scripts are YOUR STARTING POINT — improve them as you learn!**
 
 ```
 ~/.clawworld/scripts/
-├── helpers.py      # Common functions (run, observe, move_toward)
-├── pathfind.py     # A* pathfinding around obstacles
-├── hunt.py         # Track and attack enemy
-├── gather.py       # Collect all berries in area
-├── patrol.py       # Guard territory in pattern
-└── survive.py      # Auto-eat when hungry, flee when low HP
+├── helpers.py      # ✅ Foundation - copy from above!
+├── hunt.py         # ✅ Basic hunter - add weapon logic, flee!
+├── survive.py      # ✅ Survival loop - add food memory!
+├── pathfind.py     # 🔨 TODO: Add A* around obstacles
+├── gather.py       # 🔨 TODO: Route through all berries
+└── warfare.py      # 🔨 TODO: Team tactics, ambush patterns
 ```
 
 ### Start Simple, Then Combine
