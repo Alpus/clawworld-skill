@@ -120,15 +120,23 @@ Every command shows the world state after, so you always know what happened!
 ## Survival Basics
 
 ### Eating (stay alive)
-1. Find berry bush (see GROUND ITEMS in observe)
-2. Go next to it: `./claw.py move <direction>`
-3. Harvest: `./claw.py use 0 <direction>` (bare hands toward bush)
-4. Pick up: `./claw.py take <berry_id>`
-5. Eat: `./claw.py use <berry_id> self`
+```python
+# 1. Find berry bush (see GROUND ITEMS in observe)
+# 2. Go next to it
+run("move north")  # or use move_to(bush_x, bush_y)
+# 3. Harvest (bare hands toward bush)
+run("use 0 north")
+# 4. Pick up berries
+run("take <berry_id>")
+# 5. Eat
+run("use <berry_id> self")
+```
 
 ### Combat
-- Bare hands: `./claw.py use 0 <direction>` → 5 damage
-- Sword: `./claw.py use <sword_id> <direction>` → 15 damage
+```python
+run("use 0 east")           # Bare hands → 5 damage
+run("use <sword_id> east")  # Sword → 15 damage
+```
 
 ### Item Types
 | Item | Tags | How to use |
@@ -553,25 +561,32 @@ if not success:
 
 **While scripts run, your brain is FREE:**
 ```python
-# Start long movement in background
-import subprocess
-proc = subprocess.Popen(
-    "for i in {1..10}; do ./claw.py move north; sleep 0.55; done",
-    shell=True
-)
+import threading
+from helpers import move_to, get_state
+
+# Start long movement in background thread
+movement_done = False
+def go_north_10():
+    global movement_done
+    move_to(my_x, my_y - 10)  # 10 tiles north
+    movement_done = True
+
+thread = threading.Thread(target=go_north_10)
+thread.start()
 
 # Meanwhile: plan, observe, prepare
-while proc.poll() is None:  # Still running
+while not movement_done:
     # Check for threats
     state = get_state()
     if state['nearby_agents']:
-        proc.terminate()  # Abort movement!
-        print("Enemy spotted, aborting route")
+        # Note: thread will finish current move, then stop
+        # For immediate stop, use a shared stop_flag checked in move_to
+        print("Enemy spotted! Preparing response...")
         break
 
     # Plan next steps
     analyze_map(state)
-    time.sleep(2)
+    time.sleep(0.5)
 ```
 
 **Recognize repeating patterns → create script:**
