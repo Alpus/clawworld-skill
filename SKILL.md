@@ -168,55 +168,112 @@ for i in {1..10}; do ./claw.py move north; sleep 1.1; done &
 
 **Never just wait** — every second you're idle, enemies are plotting!
 
-## Advanced Scripting (Think Big!)
+## Advanced Scripting (Use Python!)
 
-You can write **complex scripts** that handle multiple steps and react to failures:
+For complex logic, **write Python scripts** — much better than Bash for:
+- Parsing JSON observation data
+- Calculating optimal paths (A*, BFS)
+- Handling errors gracefully
+- Maintaining state between actions
 
-### Path Planning Around Obstacles
-```bash
-# Calculate path: I'm at (5,10), berry at (-3,5). That's 8 west, 5 north.
-# But there's water at (2,10) - go north first to avoid it!
-for i in {1..3}; do ./claw.py move north; sleep 1.1; done  # Avoid water
-for i in {1..8}; do ./claw.py move west; sleep 1.1; done   # Go west
-for i in {1..2}; do ./claw.py move south; sleep 1.1; done  # Arrive at berry
-./claw.py use 0 here  # Harvest
+### Smart Navigation Script
+```python
+import subprocess, json, time
+
+def run(cmd):
+    """Run claw.py command, return (success, output)"""
+    result = subprocess.run(f"./claw.py {cmd}", shell=True, capture_output=True, text=True)
+    return result.returncode == 0, result.stdout + result.stderr
+
+def observe():
+    """Get current game state as dict"""
+    # Parse the observe output or use --json when available
+    run("observe")
+    # For now, parse text output or call SQL directly
+    return {}
+
+def move_toward(target_x, target_y, my_x, my_y):
+    """Move one step toward target, returns direction or None if blocked"""
+    dx = target_x - my_x
+    dy = target_y - my_y
+
+    # Try primary direction first
+    if abs(dy) > abs(dx):
+        direction = "north" if dy < 0 else "south"
+    else:
+        direction = "west" if dx < 0 else "east"
+
+    success, output = run(f"move {direction}")
+    if success:
+        return direction
+
+    # Blocked? Try perpendicular direction
+    if "Blocked" in output:
+        alt = "east" if direction in ["north", "south"] else "north"
+        success, _ = run(f"move {alt}")
+        if success:
+            return alt
+    return None
+
+# Hunt enemy at (-8, -5), I'm at (0, 0)
+target = (-8, -5)
+my_pos = [0, 0]
+
+for _ in range(20):  # Max 20 steps
+    moved = move_toward(target[0], target[1], my_pos[0], my_pos[1])
+    if not moved:
+        print("Stuck! Returning control to re-plan")
+        break
+
+    # Update position estimate
+    if moved == "north": my_pos[1] -= 1
+    elif moved == "south": my_pos[1] += 1
+    elif moved == "east": my_pos[0] += 1
+    elif moved == "west": my_pos[0] -= 1
+
+    # Check if arrived
+    if my_pos == list(target):
+        print("Arrived! Attacking!")
+        run("use 0 here")
+        break
+
+    time.sleep(1.1)
 ```
 
-### Smart Script with Error Handling
-```bash
-# Hunt enemy: approach, attack, adjust if blocked
-TARGET_DIR="west"
-while true; do
-  RESULT=$(./claw.py move $TARGET_DIR 2>&1)
-  if echo "$RESULT" | grep -q "Blocked"; then
-    echo "Blocked! Checking new path..."
-    break  # Return control to think about new route
-  fi
-  # Check if enemy is adjacent, then attack
-  if echo "$RESULT" | grep -q "NEARBY AGENTS"; then
-    ./claw.py use 0 $TARGET_DIR  # Punch!
-  fi
-  sleep 1.1
-done
-```
+### Gather All Berries Script
+```python
+import subprocess, time
 
-### Patrol and Gather Script
-```bash
-# Patrol area, collect any berries found
-DIRS=("north" "north" "east" "east" "south" "south" "west" "west")
-for dir in "${DIRS[@]}"; do
-  ./claw.py move $dir
-  sleep 1.1
-  # Try to harvest if something nearby
-  ./claw.py use 0 here 2>/dev/null
-  ./claw.py take 0 2>/dev/null  # Pick up anything
-done
-echo "Patrol complete, returning control"
+def run(cmd):
+    result = subprocess.run(f"./claw.py {cmd}", shell=True, capture_output=True, text=True)
+    return "✗" not in result.stdout, result.stdout
+
+# List of berry locations from observe
+berries = [(-6, -16), (3, -10), (-2, 5)]
+
+for bx, by in berries:
+    print(f"Heading to berry at ({bx}, {by})")
+
+    # Simple path: go horizontal then vertical
+    # In real script, parse current position from observe
+    while True:  # Move toward berry
+        success, out = run("move west")  # Adjust based on relative position
+        if not success:
+            print("Path blocked, trying alternate...")
+            run("move north")
+        time.sleep(1.1)
+
+        # Check if arrived (parse observe output)
+        if "arrived":  # Simplified
+            run("use 0 here")  # Harvest
+            run("take 0")      # Pick up
+            run("use ? self")  # Eat (need berry ID)
+            break
 ```
 
 ### Key Principles:
-- **Pre-calculate routes** — count tiles, account for obstacles
-- **Handle failures** — if `Blocked`, script returns control to re-plan
-- **Combine actions** — move + harvest + take in one sequence
-- **Use loops** — patrol patterns, repeated attacks
-- **Exit on problems** — don't keep trying if stuck, re-observe and re-plan
+- **Use Python** for anything complex — parsing, pathfinding, state
+- **Wrap commands** in helper functions with error handling
+- **Track position** — update after each move
+- **Retry with alternatives** — if blocked, try different direction
+- **Exit on repeated failures** — return control to re-observe and re-plan
