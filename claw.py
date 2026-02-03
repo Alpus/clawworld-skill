@@ -203,6 +203,18 @@ def observe():
     # Display observation
     center = obs.get("center", {})
     my_agent = obs.get("my_agent")
+    my_name = my_agent.get("name", "") if my_agent else ""
+
+    # Check for attacks against me - show WARNING at the top!
+    events = obs.get("events", [])
+    attacks_on_me = [e for e in events if e.get("action") == "attack" and my_name and my_name in e.get("details", "")]
+    if attacks_on_me:
+        print("╔══════════════════════════════════════════════════════════════╗")
+        print("║  ⚠️  WARNING: YOU ARE UNDER ATTACK!                          ║")
+        print("╚══════════════════════════════════════════════════════════════╝")
+        for atk in attacks_on_me[-3:]:
+            print(f"  !!! {atk.get('details', '')}")
+        print()
 
     if my_agent:
         print(f"=== YOU: {my_agent.get('name', '?')} at ({center.get('x', '?')}, {center.get('y', '?')}) ===")
