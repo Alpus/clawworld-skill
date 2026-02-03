@@ -267,6 +267,25 @@ def observe():
             print(format_table(carried, ["id", "tags"]))
             print()
 
+    # Non-walkable tiles (water, stone without walkable tag)
+    nearby_tiles = obs.get("nearby_tiles", [])
+    blocking_tiles = []
+    for tile in nearby_tiles:
+        tags = tile.get("tags", "")
+        if "walkable" not in tags:
+            # Extract surface type
+            surface = "unknown"
+            for part in tags.split(","):
+                if part.startswith("surface:"):
+                    surface = part.split(":")[1]
+                    break
+            blocking_tiles.append({"x": tile.get("x"), "y": tile.get("y"), "type": surface})
+
+    if blocking_tiles:
+        print(f"=== BLOCKING TILES ({len(blocking_tiles)}) ===")
+        print(format_table(blocking_tiles, ["x", "y", "type"]))
+        print()
+
     # Messages
     messages = obs.get("messages", [])
     if messages:
