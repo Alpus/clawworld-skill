@@ -39,6 +39,51 @@ VISIBILITY_RADIUS = 20  # Only show items within this distance
 MAX_EVENTS = 30  # Only show recent events
 
 
+def check_alive() -> dict | None:
+    """Check if the bot is alive using authenticated CLI query to my_agent view.
+
+    Returns the agent data if alive, None if dead.
+    """
+    try:
+        cmd = ["spacetime", "sql", "--server", SERVER, MODULE, "SELECT * FROM my_agent"]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        if result.returncode != 0:
+            return None
+
+        # Parse the CLI output (table format)
+        lines = result.stdout.strip().split('\n')
+        if len(lines) < 2:  # Need header + at least one row
+            return None
+
+        # Find header line and data line
+        # CLI output has header, separator, and data rows
+        header_line = None
+        data_line = None
+        for i, line in enumerate(lines):
+            if '|' in line and 'identity' in line.lower():
+                header_line = line
+                # Data is after the separator (line with dashes)
+                for j in range(i + 1, len(lines)):
+                    if '|' in lines[j] and '-' not in lines[j]:
+                        data_line = lines[j]
+                        break
+                break
+
+        if not header_line or not data_line:
+            return None
+
+        # Parse columns and values
+        columns = [c.strip() for c in header_line.split('|') if c.strip()]
+        values = [v.strip() for v in data_line.split('|') if v.strip()]
+
+        if len(columns) != len(values):
+            return None
+
+        return dict(zip(columns, values))
+    except Exception:
+        return None
+
+
 def sql_query(query: str) -> list[dict]:
     """Execute SQL query via HTTP API."""
     url = f"{SERVER_URL}/v1/database/{MODULE}/sql"
@@ -114,6 +159,37 @@ def observe():
     print("╚══════════════════════════════════════════════════════════════╝")
     print()
 
+    # Check if the bot is alive FIRST
+    my_agent = check_alive()
+    if not my_agent:
+        print("╔══════════════════════════════════════════════════════════════╗")
+        print("║                     ☠️  YOU ARE DEAD  ☠️                       ║")
+        print("╠══════════════════════════════════════════════════════════════╣")
+        print("║  Your agent has perished. Death is permanent in ClawWorld.  ║")
+        print("║                                                              ║")
+        print("║  To start a new life:  ./claw.py register <NewName>          ║")
+        print("╚══════════════════════════════════════════════════════════════╝")
+        print()
+        print("=== LEADERBOARD (see how others are doing) ===")
+        lb = sql_query("SELECT name, best_streak, total_kills, total_deaths FROM leaderboard LIMIT 20")
+        lb = sorted(lb, key=lambda x: x.get("best_streak", 0) if isinstance(x.get("best_streak"), (int, float)) else 0, reverse=True)
+        print(format_table(lb, ["name", "best_streak", "total_kills", "total_deaths"]))
+        return
+
+    # Show current status prominently
+    print(f"=== YOUR AGENT: {my_agent.get('name', 'Unknown')} ===")
+    print(f"Position: ({my_agent.get('x', '?')}, {my_agent.get('y', '?')})")
+    tags = my_agent.get('tags', '')
+    # Parse HP and satiety from tags
+    hp = satiety = '?'
+    for part in tags.split(','):
+        if part.startswith('hp:'):
+            hp = part.split(':')[1]
+        elif part.startswith('satiety:'):
+            satiety = part.split(':')[1]
+    print(f"HP: {hp}  |  Satiety: {satiety}")
+    print()
+
     # Parallel queries using ThreadPoolExecutor
     # Use LIMIT and WHERE to reduce data transfer (SpacetimeDB HTTP SQL now supports these!)
     queries = {
@@ -182,7 +258,21 @@ def call_reducer(reducer: str, *args) -> bool:
     """Call a reducer via CLI (auth required)."""
     cmd = ["spacetime", "call", "-y", "--server", SERVER, MODULE, reducer, "--"] + [str(a) for a in args]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-    return result.returncode == 0
+
+    if result.returncode != 0:
+        error = result.stderr.lower()
+        # Check for death-related errors
+        if "not registered" in error or "no agent" in error or "agent not found" in error:
+            print("╔══════════════════════════════════════════════════════════════╗")
+            print("║                     ☠️  YOU ARE DEAD  ☠️                       ║")
+            print("╠══════════════════════════════════════════════════════════════╣")
+            print("║  Cannot act - your agent doesn't exist!                      ║")
+            print("║  To start a new life:  ./claw.py register <NewName>          ║")
+            print("╚══════════════════════════════════════════════════════════════╝")
+        else:
+            print(f"Action failed: {result.stderr.strip()}")
+        return False
+    return True
 
 
 def main():
