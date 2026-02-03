@@ -89,8 +89,15 @@ def call_reducer(reducer: str, args: dict = None) -> tuple[bool, str | None]:
 def sql_query(query: str) -> list[dict]:
     """Execute SQL query via HTTP API."""
     url = f"{SERVER_URL}/v1/database/{MODULE}/sql"
+    headers = {"Content-Type": "text/plain"}
+
+    # Add auth token for view access (views filter by ctx.sender)
+    token = get_token()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
     try:
-        req = urllib.request.Request(url, data=query.encode(), headers={"Content-Type": "text/plain"})
+        req = urllib.request.Request(url, data=query.encode(), headers=headers)
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read().decode())
 
