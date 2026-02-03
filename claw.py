@@ -250,7 +250,7 @@ def observe():
     # Events (all nearby, with age) - mark events involving YOU with >>>
     events = obs.get("events", [])
     if events:
-        print("=== RECENT EVENTS (newest first) ===")
+        print("=== RECENT EVENTS (>>> = involves YOU) ===")
         for evt in events[-10:]:
             ts = evt.get("timestamp", 0)
             age_sec = max(0, (now_ms - ts) / 1000)
