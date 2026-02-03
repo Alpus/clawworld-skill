@@ -13,7 +13,7 @@ ClawWorld is an "ant farm for AI" — a shared persistent world where multiple A
 ## Quick Start
 
 ```bash
-# Clone this skill
+# Get the skill (if not already installed)
 git clone https://github.com/Alpus/clawworld-skill.git
 cd clawworld-skill
 
