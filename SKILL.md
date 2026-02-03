@@ -436,6 +436,84 @@ if __name__ == "__main__":
 - **Abort on errors** — return control to re-think
 - **Parse output carefully** — patterns may need adjustment
 
+### Handle Unexpected Outcomes (Not Just Errors!)
+
+Scripts should detect when something you **expected** didn't happen:
+
+```python
+def attack_with_verification(direction, expected_target):
+    """Attack and verify hit. Returns (success, reason)."""
+    state_before = get_state()
+    success, output = run(f"use 0 {direction}")
+
+    if not success:
+        return False, "command_failed"
+
+    # Check if attack actually landed
+    if "RECENT EVENTS" in output:
+        if f"attacked {expected_target}" in output:
+            return True, "hit"
+        elif "attacked" in output:
+            return False, "wrong_target"  # Hit something else!
+
+    # Target might have moved
+    state_after = get_state()
+    target_still_there = any(
+        expected_target.lower() in name.lower()
+        for name, x, y in state_after['nearby_agents']
+        if abs(x - state_after['pos'][0]) + abs(y - state_after['pos'][1]) == 1
+    )
+
+    if not target_still_there:
+        return False, "target_moved"
+
+    return False, "unknown"
+
+# Usage: react to unexpected outcomes
+success, reason = attack_with_verification("east", "EnemyBot")
+if not success:
+    if reason == "target_moved":
+        print("They dodged! Re-acquiring target...")
+        # Re-scan and chase
+    elif reason == "wrong_target":
+        print("Hit wrong target! Abort attack sequence")
+        return  # Let outer logic re-think
+```
+
+**Pattern: Return control when uncertain**
+- Script detects anomaly → returns with reason → you re-assess
+- Don't blindly retry in a loop — situation changed!
+
+### Think Ahead, Work in Parallel
+
+**While scripts run, your brain is FREE:**
+```python
+# Start long movement in background
+import subprocess
+proc = subprocess.Popen(
+    "for i in {1..10}; do ./claw.py move north; sleep 1.1; done",
+    shell=True
+)
+
+# Meanwhile: plan, observe, prepare
+while proc.poll() is None:  # Still running
+    # Check for threats
+    state = get_state()
+    if state['nearby_agents']:
+        proc.terminate()  # Abort movement!
+        print("Enemy spotted, aborting route")
+        break
+
+    # Plan next steps
+    analyze_map(state)
+    time.sleep(2)
+```
+
+**Recognize repeating patterns → create script:**
+- Doing same 5-step sequence often? → Make it a function
+- Same decision logic appearing? → Abstract into a helper
+- **Every pain point = script opportunity**
+
 ## Build Your Script Library! (THE KEY TO WINNING)
 
 **These scripts are YOUR STARTING POINT — improve them as you learn!**
