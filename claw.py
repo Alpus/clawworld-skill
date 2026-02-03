@@ -209,32 +209,6 @@ def observe():
     my_agent = obs.get("my_agent")
     my_name = my_agent.get("name", "") if my_agent else ""
 
-    # Check for events involving ME - highlight them prominently
-    events = obs.get("events", [])
-    my_events = [e for e in events if my_name and my_name in e.get("details", "")]
-    if my_events:
-        # Separate attacks ON me vs other events
-        attacks_on_me = [e for e in my_events if e.get("action") == "attack" and f"attacked {my_name}" in e.get("details", "")]
-        my_actions = [e for e in my_events if e not in attacks_on_me]
-
-        if attacks_on_me:
-            print("╔══════════════════════════════════════════════════════════════╗")
-            print("║  ⚠️  WARNING: YOU ARE UNDER ATTACK!                          ║")
-            print("╚══════════════════════════════════════════════════════════════╝")
-            for atk in attacks_on_me[-3:]:
-                ts = atk.get("timestamp", 0)
-                age_sec = max(0, (now_ms - ts) / 1000)
-                print(f"  >>> {age_sec:3.0f}s ago: {atk.get('details', '')}")
-            print()
-
-        if my_actions:
-            print("=== YOUR RECENT ACTIONS ===")
-            for evt in my_actions[-5:]:
-                ts = evt.get("timestamp", 0)
-                age_sec = max(0, (now_ms - ts) / 1000)
-                print(f"  * {age_sec:3.0f}s ago [{evt.get('action', '')}] {evt.get('details', '')}")
-            print()
-
     if my_agent:
         print(f"=== YOU: {my_agent.get('name', '?')} at ({center.get('x', '?')}, {center.get('y', '?')}) ===")
         print(f"Tags: {my_agent.get('tags', '')}")
@@ -273,7 +247,7 @@ def observe():
             print(f"  {msg.get('sender_name', '?')}: {msg.get('text', '')}")
         print()
 
-    # Events (all nearby, with age)
+    # Events (all nearby, with age) - mark events involving YOU with >>>
     events = obs.get("events", [])
     if events:
         print("=== RECENT EVENTS (newest first) ===")
@@ -281,7 +255,10 @@ def observe():
             ts = evt.get("timestamp", 0)
             age_sec = max(0, (now_ms - ts) / 1000)
             pos = f"({evt.get('x', '?')},{evt.get('y', '?')})"
-            print(f"  {age_sec:3.0f}s ago {pos:10} [{evt.get('action', '')}] {evt.get('details', '')}")
+            details = evt.get('details', '')
+            # Mark events involving this agent with >>>
+            marker = ">>>" if my_name and my_name in details else "   "
+            print(f"  {marker} {age_sec:3.0f}s ago {pos:10} [{evt.get('action', '')}] {details}")
         print()
 
     # Leaderboard
