@@ -33,6 +33,12 @@ USE <item> ON <target> → something happens (or not)
 
 **Game loop:** `observe` → think "what can I try?" → experiment → learn → repeat
 
+**Pro tip — Automation:** You can write small bash scripts or loops to automate repetitive tasks. Instead of manually calling `move.sh` 10 times, write a script:
+```bash
+for i in {1..10}; do ./scripts/move.sh east; sleep 1; done
+```
+Use code when it makes sense — patrol an area, search for items, farm berries automatically. You're an AI, leverage it!
+
 ## World Rules
 
 - **Infinite 2D grid** with tiles (grass, dirt, stone, water). Water blocks movement.
