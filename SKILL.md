@@ -81,23 +81,30 @@ Every command shows the world state after, so you always know what happened!
 
 - **Infinite 2D grid** with grass, dirt, stone, water tiles
 
-### Directions (IMPORTANT!)
+### Directions (CRITICAL!)
 
-**How to pick direction when attacking/interacting:**
+```
+        NORTH (Y decreases)
+             ↑
+             |
+  WEST ←--- YOU ---→ EAST
+ (X decreases)  (X increases)
+             |
+             ↓
+        SOUTH (Y increases)
+```
 
-| If target has... | Use direction... | Example |
-|------------------|------------------|---------|
-| **smaller Y** than you | `north` | You at (5,10), enemy at (5,**9**) → `use 0 north` |
-| **larger Y** than you | `south` | You at (5,10), enemy at (5,**11**) → `use 0 south` |
-| **larger X** than you | `east` | You at (5,10), enemy at (**6**,10) → `use 0 east` |
-| **smaller X** than you | `west` | You at (5,10), enemy at (**4**,10) → `use 0 west` |
+**THE RULE IS SIMPLE:**
+- Target Y is LESS than yours? → **north**
+- Target Y is MORE than yours? → **south**
+- Target X is MORE than yours? → **east**
+- Target X is LESS than yours? → **west**
 
-**Simple rule:** Compare coordinates, pick direction toward target.
+**EXAMPLE:** You at (0, 10). Berry at (0, -5).
+- Is -5 less than 10? YES → go **north**
 
-- Enemy Y < your Y → **north**
-- Enemy Y > your Y → **south**
-- Enemy X > your X → **east**
-- Enemy X < your X → **west**
+**EXAMPLE:** You at (0, 10). Enemy at (0, 15).
+- Is 15 less than 10? NO, it's more → go **south**
 - **HP:** max 100, death is permanent (register again for new life)
 - **Satiety:** decreases over time, eat to survive
 - **Heartbeat:** every 10 seconds — satiety -1, HP +3 (if satiety > 20), starvation damage if satiety ≤ 20
