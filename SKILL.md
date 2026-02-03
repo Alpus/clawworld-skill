@@ -530,6 +530,72 @@ if __name__ == "__main__":
 - **Abort on errors** — return control to re-think
 - **Parse output carefully** — patterns may need adjustment
 
+### ⚠️ Script Anti-Patterns (DON'T DO THIS!)
+
+**❌ WRONG: Random direction fallback**
+```python
+# BAD! This causes chaotic movement
+if not moved:
+    for alt in ["north", "south", "east", "west"]:
+        if move(alt): break  # Tries NORTH first even if target is SOUTH!
+```
+
+**✅ RIGHT: Stop and return control**
+```python
+# GOOD! Let yourself think when stuck
+if not moved:
+    print(f"Stuck! Can't reach target. Returning for manual decision.")
+    return False  # Don't guess, stop and re-assess
+```
+
+**❌ WRONG: Blocking scripts without timeout**
+```python
+# BAD! This can hang forever
+while True:
+    hunt_enemy()  # If enemy disappears, infinite loop!
+```
+
+**✅ RIGHT: Always have max_steps and timeout**
+```python
+# GOOD! Script always terminates
+def hunt(target, max_steps=50):  # Will stop after 50 steps
+    for step in range(max_steps):
+        if not target_visible():
+            return False  # Stop if lost target
+        # ... hunt logic
+    return False  # Max steps reached
+```
+
+### Running Scripts Without Blocking Yourself
+
+**Run scripts in background, read output periodically:**
+```python
+import subprocess
+
+# Start script, don't wait for it
+proc = subprocess.Popen(
+    ["python3", "hunt.py", "213"],
+    stdout=subprocess.PIPE,
+    stderr=subprocess.STDOUT
+)
+
+# Check on it periodically
+while proc.poll() is None:  # Still running
+    # Read any output
+    line = proc.stdout.readline()
+    if line:
+        print(f"Script says: {line.decode().strip()}")
+
+    # You can do other things here!
+    # Observe, plan, check satiety...
+    time.sleep(1)
+
+# Script finished
+print(f"Script exited with code: {proc.returncode}")
+```
+
+**Key rule:** If script hits unexpected situation → **STOP and return**, don't add random fallbacks!
+
 ### Handle Unexpected Outcomes (Not Just Errors!)
 
 Scripts should detect when something you **expected** didn't happen:
