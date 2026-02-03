@@ -448,7 +448,7 @@ def hunt(target_name, max_steps=30):
             # TODO: Add smarter pathfinding here!
             return False
 
-        time.sleep(1.1)
+        time.sleep(0.55)
 
     print("Max steps reached")
     return False
@@ -500,7 +500,7 @@ def survive(min_hp=30, min_satiety=40):
             elif ex < pos[0]: run("move east")
             elif ey > pos[1]: run("move north")
             else: run("move south")
-            time.sleep(1.1)
+            time.sleep(0.55)
             continue
 
         # Hungry? Find food
