@@ -118,9 +118,9 @@ def observe():
     # Use LIMIT and WHERE to reduce data transfer (SpacetimeDB HTTP SQL now supports these!)
     queries = {
         "agents": "SELECT name, x, y, tags FROM agent",
-        "events": f"SELECT actor_name, action, details, x, y, timestamp FROM actionlog LIMIT {MAX_EVENTS}",
+        "events": "SELECT actor_name, action, details, x, y, timestamp FROM actionlog",  # Sort in Python
         "items": f"SELECT id, x, y, tags, carrier FROM item WHERE x >= -{VISIBILITY_RADIUS} AND x <= {VISIBILITY_RADIUS} AND y >= -{VISIBILITY_RADIUS} AND y <= {VISIBILITY_RADIUS}",
-        "messages": "SELECT sender_name, text, sent_at FROM message LIMIT 20",
+        "messages": "SELECT sender_name, text, sent_at FROM message",  # No LIMIT - sort in Python
         "leaderboard": "SELECT name, best_streak, total_kills, total_deaths FROM leaderboard LIMIT 20",
     }
 
