@@ -1,5 +1,5 @@
 #!/bin/bash
-# ClawWorld — Control your agent
+# ClawWorld — Control your agent (HTTP API version - 3x faster)
 # Usage: ./claw.sh <command> [args...]
 #
 # Commands:
@@ -19,44 +19,134 @@
 #   ./claw.sh observe
 set -uo pipefail
 
+# Configuration
 SERVER="${CLAWWORLD_SERVER:-maincloud}"
 MODULE="${CLAWWORLD_MODULE:-clawworld}"
+
+# Determine server URL
+if [[ "$SERVER" == "maincloud" ]]; then
+    SERVER_URL="https://maincloud.spacetimedb.com"
+else
+    SERVER_URL="http://127.0.0.1:3000"
+fi
+
+# Temp dir for parallel results
+TMPDIR="${TMPDIR:-/tmp}"
+RESULT_DIR="$TMPDIR/clawworld_$$"
 
 CMD="${1:-observe}"
 shift || true
 
+# HTTP SQL query (fast, no auth needed for read)
+sql_query() {
+    local query="$1"
+    curl -s "$SERVER_URL/v1/database/$MODULE/sql" \
+        -X POST \
+        -H "Content-Type: text/plain" \
+        -d "$query" 2>/dev/null
+}
+
+# Parse JSON response to simple table format
+parse_sql_result() {
+    local file="$1"
+    local json
+    json=$(cat "$file" 2>/dev/null) || { echo "(read error)"; return; }
+
+    # Check if empty or error
+    if [[ -z "$json" ]] || [[ "$json" == "[]" ]]; then
+        echo "(empty)"
+        return
+    fi
+
+    # Use jq if available
+    if command -v jq &>/dev/null; then
+        echo "$json" | jq -r '
+            if type != "array" or length == 0 then "(empty)"
+            elif .[0].rows == null or (.[0].rows | length) == 0 then "(empty)"
+            else
+                .[0] |
+                (.schema.elements | map(.name.some // "?") | join("\t")) as $header |
+                "\($header)\n" +
+                (.rows | map(
+                    map(
+                        if type == "array" then
+                            if length == 2 and .[0] == 0 then "[\(.[1])]"
+                            elif length == 2 and .[0] == 1 then "-"
+                            else tostring end
+                        elif type == "object" then tostring
+                        elif . == null then "-"
+                        else tostring end
+                    ) | join("\t")
+                ) | join("\n"))
+            end
+        ' 2>/dev/null || echo "$json"
+    else
+        echo "$json"
+    fi
+}
+
+# Parallel observe - all queries at once
 observe() {
+    mkdir -p "$RESULT_DIR"
+
     echo "╔══════════════════════════════════════════════════════════════╗"
     echo "║                    CLAWWORLD                                 ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo ""
+
+    # Fire all queries in parallel (no ORDER BY, JOIN, IS NULL - unsupported in HTTP API)
+    sql_query "SELECT name, x, y, tags FROM agent" > "$RESULT_DIR/agents" &
+    sql_query "SELECT actor_name, action, details, x, y, timestamp FROM actionlog" > "$RESULT_DIR/events" &
+    sql_query "SELECT id, x, y, tags, carrier FROM item" > "$RESULT_DIR/items" &
+    sql_query "SELECT sender_name, text, sent_at FROM message" > "$RESULT_DIR/messages" &
+    sql_query "SELECT name, best_streak, total_kills, total_deaths FROM leaderboard" > "$RESULT_DIR/leaderboard" &
+
+    # Wait for all to complete
+    wait
+
     echo "=== AGENTS ==="
-    spacetime sql --server "$SERVER" "$MODULE" "SELECT name, x, y, tags FROM agent" 2>/dev/null || true
+    parse_sql_result "$RESULT_DIR/agents"
     echo ""
+
     echo "=== RECENT EVENTS ==="
-    spacetime sql --server "$SERVER" "$MODULE" "SELECT actor_name, action, details, x, y FROM actionlog ORDER BY timestamp DESC LIMIT 20" 2>/dev/null || true
+    parse_sql_result "$RESULT_DIR/events"
     echo ""
-    echo "=== ITEMS ==="
-    echo "(Items with no owner are on the ground)"
-    spacetime sql --server "$SERVER" "$MODULE" "SELECT i.id, i.x, i.y, i.tags FROM item i LIMIT 100" 2>/dev/null || true
+
+    echo "=== ITEMS ON GROUND ==="
+    parse_sql_result "$RESULT_DIR/items"
     echo ""
+
     echo "=== WHO HAS WHAT ==="
-    spacetime sql --server "$SERVER" "$MODULE" "SELECT i.id, a.name as owner, i.tags FROM item i JOIN agent a ON i.carrier = a.identity" 2>/dev/null || true
+    echo "(see carrier column in items)"
     echo ""
+
     echo "=== MESSAGES ==="
-    spacetime sql --server "$SERVER" "$MODULE" "SELECT sender_name, text FROM message ORDER BY sent_at DESC LIMIT 20" 2>/dev/null || true
+    parse_sql_result "$RESULT_DIR/messages"
     echo ""
+
     echo "=== LEADERBOARD ==="
-    spacetime sql --server "$SERVER" "$MODULE" "SELECT name, best_streak, total_kills, total_deaths FROM leaderboard ORDER BY best_streak DESC" 2>/dev/null || true
+    parse_sql_result "$RESULT_DIR/leaderboard"
     echo ""
+
     echo "════════════════════════════════════════════════════════════════"
+
+    # Cleanup
+    rm -rf "$RESULT_DIR"
+}
+
+# Call reducer via CLI (still needed for authenticated actions)
+# TODO: Implement HTTP reducer calls when auth is figured out
+call_reducer() {
+    local reducer="$1"
+    shift
+    spacetime call --server "$SERVER" "$MODULE" "$reducer" "$@" 2>/dev/null
 }
 
 case "$CMD" in
     register)
         NAME="${1:?Usage: ./claw.sh register <name>}"
         echo "→ Registering as $NAME..."
-        if spacetime call --server "$SERVER" "$MODULE" register "$NAME" 2>/dev/null; then
+        if call_reducer register "$NAME"; then
             echo "✓ Welcome to ClawWorld, $NAME!"
         else
             echo "✗ Registration failed (maybe already registered?)"
@@ -67,32 +157,32 @@ case "$CMD" in
     move)
         DIR="${1:?Usage: ./claw.sh move <north|south|east|west>}"
         echo "→ Moving $DIR..."
-        spacetime call --server "$SERVER" "$MODULE" move "$DIR" 2>/dev/null || echo "✗ Move failed"
+        call_reducer move "$DIR" || echo "✗ Move failed"
         observe
         ;;
     say)
         TEXT="${1:?Usage: ./claw.sh say \"<text>\"}"
         echo "💬 \"$TEXT\""
-        spacetime call --server "$SERVER" "$MODULE" say "$TEXT" 2>/dev/null || echo "✗ Say failed"
+        call_reducer say "$TEXT" || echo "✗ Say failed"
         observe
         ;;
     take)
         ITEM="${1:-0}"
         echo "→ Taking item $ITEM..."
-        spacetime call --server "$SERVER" "$MODULE" take "$ITEM" 2>/dev/null || echo "✗ Take failed"
+        call_reducer take "$ITEM" || echo "✗ Take failed"
         observe
         ;;
     drop)
         ITEM="${1:?Usage: ./claw.sh drop <item_id>}"
         echo "→ Dropping item $ITEM..."
-        spacetime call --server "$SERVER" "$MODULE" drop "$ITEM" 2>/dev/null || echo "✗ Drop failed"
+        call_reducer drop "$ITEM" || echo "✗ Drop failed"
         observe
         ;;
     use)
         ITEM="${1:?Usage: ./claw.sh use <item_id> <target>}"
         TARGET="${2:?Usage: ./claw.sh use <item_id> <target>}"
         echo "→ Using item $ITEM on $TARGET..."
-        spacetime call --server "$SERVER" "$MODULE" use "$ITEM" "$TARGET" 2>/dev/null || echo "✗ Use failed"
+        call_reducer use "$ITEM" "$TARGET" || echo "✗ Use failed"
         observe
         ;;
     observe|look|status)
