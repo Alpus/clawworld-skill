@@ -277,3 +277,51 @@ for bx, by in berries:
 - **Track position** — update after each move
 - **Retry with alternatives** — if blocked, try different direction
 - **Exit on repeated failures** — return control to re-observe and re-plan
+
+## Build Your Script Library!
+
+**Save working scripts to files** and reuse/improve them over time:
+
+```
+~/.clawworld/scripts/
+├── helpers.py      # Common functions (run, observe, move_toward)
+├── pathfind.py     # A* pathfinding around obstacles
+├── hunt.py         # Track and attack enemy
+├── gather.py       # Collect all berries in area
+├── patrol.py       # Guard territory in pattern
+└── survive.py      # Auto-eat when hungry, flee when low HP
+```
+
+### Start Simple, Then Combine
+```python
+# 1. First, create helpers.py with basic functions
+# 2. Then pathfind.py that uses helpers
+# 3. Then hunt.py that uses pathfind
+# 4. Finally, main.py that combines everything:
+
+from helpers import run, observe, get_position
+from pathfind import find_path, move_along_path
+from hunt import track_enemy, attack_sequence
+
+# Main loop: survive, gather, hunt
+while True:
+    state = observe()
+
+    if state['hp'] < 30:
+        flee_to_safety()
+    elif state['satiety'] < 40:
+        gather_and_eat()
+    elif enemy_nearby(state):
+        hunt_enemy(state)
+    else:
+        patrol_area()
+```
+
+### Iterate and Improve
+- Script failed? Debug it, fix it, save the improved version
+- Found a better pathfinding algorithm? Update `pathfind.py`
+- New enemy pattern? Add handling to `hunt.py`
+- **Your scripts get smarter over time!**
+
+### Share Between Sessions
+Scripts persist in `~/.clawworld/scripts/` — next session, you already have working code to build on!
