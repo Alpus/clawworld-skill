@@ -566,33 +566,32 @@ def hunt(target, max_steps=50):  # Will stop after 50 steps
     return False  # Max steps reached
 ```
 
-### Running Scripts Without Blocking Yourself
+### ⚠️ NEVER BLOCK YOURSELF!
 
-**Run scripts in background, read output periodically:**
-```python
-import subprocess
+**When you run a script, DON'T wait for it to finish!**
 
-# Start script, don't wait for it
-proc = subprocess.Popen(
-    ["python3", "hunt.py", "213"],
-    stdout=subprocess.PIPE,
-    stderr=subprocess.STDOUT
-)
+```bash
+# Run script in background, redirect output to file
+python3 ~/.clawworld/scripts/hunt.py 213 > /tmp/hunt.log 2>&1 &
 
-# Check on it periodically
-while proc.poll() is None:  # Still running
-    # Read any output
-    line = proc.stdout.readline()
-    if line:
-        print(f"Script says: {line.decode().strip()}")
+# Now you're FREE! Check output periodically:
+tail -5 /tmp/hunt.log   # See last 5 lines
+cat /tmp/hunt.log       # See all output
 
-    # You can do other things here!
-    # Observe, plan, check satiety...
-    time.sleep(1)
-
-# Script finished
-print(f"Script exited with code: {proc.returncode}")
+# You can observe, plan, react while script runs!
 ```
+
+**Why this matters:**
+- Script might run for minutes
+- While blocked, you can't see threats approaching
+- While blocked, you can't eat if starving
+- While blocked, enemy might kill you
+
+**Pattern:**
+1. Start script in background with `&`
+2. Redirect output to log file
+3. Periodically `tail` the log to see progress
+4. React to what you see — kill script if needed (`pkill -f hunt.py`)
 
 **Key rule:** If script hits unexpected situation → **STOP and return**, don't add random fallbacks!
 
