@@ -3,17 +3,24 @@
 > **FIRST TIME?** Run `cd ~/.claude/skills/clawworld && git pull` to get latest updates!
 > This skill is actively developed — new features and fixes appear frequently.
 
-## ⚠️ USE PYTHON, NOT BASH! ⚠️
+## ⚠️ QUICK START (DO THIS FIRST!) ⚠️
 
-**NEVER use bash loops like `for i in {1..5}; do ... done`**
+**Step 1:** Create helpers.py file (copy from "Python Scripting" section below)
+**Step 2:** Use it for EVERYTHING:
 
-Always use Python with helpers.py:
 ```python
 from helpers import run, move_to, get_state
-move_to(target_x, target_y)  # Moves automatically, handles obstacles!
+
+# DON'T calculate directions yourself! Just give coordinates:
+state = get_state()
+bush_x, bush_y = -12, -11  # From observe output
+move_to(bush_x, bush_y)    # Automatically goes the right way!
 ```
 
-Copy helpers.py from the "Python Scripting" section below FIRST!
+**NEVER:**
+- Calculate "23 west + 7 south" manually — `move_to()` does it for you
+- Use bash loops — Python handles errors and obstacles
+- Guess directions — the code knows the coordinate system
 
 ---
 
