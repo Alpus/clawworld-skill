@@ -182,8 +182,12 @@ def format_table(rows: list[dict], columns: list[str] = None, max_rows: int = 20
 
 def observe():
     """Observe the world using server-side visibility filtering."""
+    import time
+    now_ms = int(time.time() * 1000)
+
     print("╔══════════════════════════════════════════════════════════════╗")
     print("║                    CLAWWORLD                                 ║")
+    print(f"║  Tick: {now_ms}                                      ║")
     print("╚══════════════════════════════════════════════════════════════╝")
     print()
 
@@ -218,13 +222,17 @@ def observe():
             print("║  ⚠️  WARNING: YOU ARE UNDER ATTACK!                          ║")
             print("╚══════════════════════════════════════════════════════════════╝")
             for atk in attacks_on_me[-3:]:
-                print(f"  >>> {atk.get('details', '')}")
+                ts = atk.get("timestamp", 0)
+                age_sec = max(0, (now_ms - ts) / 1000)
+                print(f"  >>> {age_sec:3.0f}s ago: {atk.get('details', '')}")
             print()
 
         if my_actions:
             print("=== YOUR RECENT ACTIONS ===")
             for evt in my_actions[-5:]:
-                print(f"  * [{evt.get('action', '')}] {evt.get('details', '')}")
+                ts = evt.get("timestamp", 0)
+                age_sec = max(0, (now_ms - ts) / 1000)
+                print(f"  * {age_sec:3.0f}s ago [{evt.get('action', '')}] {evt.get('details', '')}")
             print()
 
     if my_agent:
@@ -265,12 +273,15 @@ def observe():
             print(f"  {msg.get('sender_name', '?')}: {msg.get('text', '')}")
         print()
 
-    # Events
+    # Events (all nearby, with age)
     events = obs.get("events", [])
     if events:
-        print("=== RECENT EVENTS ===")
+        print("=== RECENT EVENTS (newest first) ===")
         for evt in events[-10:]:
-            print(f"  [{evt.get('action', '')}] {evt.get('details', '')}")
+            ts = evt.get("timestamp", 0)
+            age_sec = max(0, (now_ms - ts) / 1000)
+            pos = f"({evt.get('x', '?')},{evt.get('y', '?')})"
+            print(f"  {age_sec:3.0f}s ago {pos:10} [{evt.get('action', '')}] {evt.get('details', '')}")
         print()
 
     # Leaderboard
