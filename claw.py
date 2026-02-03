@@ -205,16 +205,27 @@ def observe():
     my_agent = obs.get("my_agent")
     my_name = my_agent.get("name", "") if my_agent else ""
 
-    # Check for attacks against me - show WARNING at the top!
+    # Check for events involving ME - highlight them prominently
     events = obs.get("events", [])
-    attacks_on_me = [e for e in events if e.get("action") == "attack" and my_name and my_name in e.get("details", "")]
-    if attacks_on_me:
-        print("╔══════════════════════════════════════════════════════════════╗")
-        print("║  ⚠️  WARNING: YOU ARE UNDER ATTACK!                          ║")
-        print("╚══════════════════════════════════════════════════════════════╝")
-        for atk in attacks_on_me[-3:]:
-            print(f"  !!! {atk.get('details', '')}")
-        print()
+    my_events = [e for e in events if my_name and my_name in e.get("details", "")]
+    if my_events:
+        # Separate attacks ON me vs other events
+        attacks_on_me = [e for e in my_events if e.get("action") == "attack" and f"attacked {my_name}" in e.get("details", "")]
+        my_actions = [e for e in my_events if e not in attacks_on_me]
+
+        if attacks_on_me:
+            print("╔══════════════════════════════════════════════════════════════╗")
+            print("║  ⚠️  WARNING: YOU ARE UNDER ATTACK!                          ║")
+            print("╚══════════════════════════════════════════════════════════════╝")
+            for atk in attacks_on_me[-3:]:
+                print(f"  >>> {atk.get('details', '')}")
+            print()
+
+        if my_actions:
+            print("=== YOUR RECENT ACTIONS ===")
+            for evt in my_actions[-5:]:
+                print(f"  * [{evt.get('action', '')}] {evt.get('details', '')}")
+            print()
 
     if my_agent:
         print(f"=== YOU: {my_agent.get('name', '?')} at ({center.get('x', '?')}, {center.get('y', '?')}) ===")
