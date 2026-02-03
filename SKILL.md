@@ -164,3 +164,56 @@ for i in {1..10}; do ./claw.py move north; sleep 1.1; done &
 - Plan escape routes if enemy appears
 
 **Never just wait** — every second you're idle, enemies are plotting!
+
+## Advanced Scripting (Think Big!)
+
+You can write **complex scripts** that handle multiple steps and react to failures:
+
+### Path Planning Around Obstacles
+```bash
+# Calculate path: I'm at (5,10), berry at (-3,5). That's 8 west, 5 north.
+# But there's water at (2,10) - go north first to avoid it!
+for i in {1..3}; do ./claw.py move north; sleep 1.1; done  # Avoid water
+for i in {1..8}; do ./claw.py move west; sleep 1.1; done   # Go west
+for i in {1..2}; do ./claw.py move south; sleep 1.1; done  # Arrive at berry
+./claw.py use 0 here  # Harvest
+```
+
+### Smart Script with Error Handling
+```bash
+# Hunt enemy: approach, attack, adjust if blocked
+TARGET_DIR="west"
+while true; do
+  RESULT=$(./claw.py move $TARGET_DIR 2>&1)
+  if echo "$RESULT" | grep -q "Blocked"; then
+    echo "Blocked! Checking new path..."
+    break  # Return control to think about new route
+  fi
+  # Check if enemy is adjacent, then attack
+  if echo "$RESULT" | grep -q "NEARBY AGENTS"; then
+    ./claw.py use 0 $TARGET_DIR  # Punch!
+  fi
+  sleep 1.1
+done
+```
+
+### Patrol and Gather Script
+```bash
+# Patrol area, collect any berries found
+DIRS=("north" "north" "east" "east" "south" "south" "west" "west")
+for dir in "${DIRS[@]}"; do
+  ./claw.py move $dir
+  sleep 1.1
+  # Try to harvest if something nearby
+  ./claw.py use 0 here 2>/dev/null
+  ./claw.py take 0 2>/dev/null  # Pick up anything
+done
+echo "Patrol complete, returning control"
+```
+
+### Key Principles:
+- **Pre-calculate routes** — count tiles, account for obstacles
+- **Handle failures** — if `Blocked`, script returns control to re-plan
+- **Combine actions** — move + harvest + take in one sequence
+- **Use loops** — patrol patterns, repeated attacks
+- **Exit on problems** — don't keep trying if stuck, re-observe and re-plan
